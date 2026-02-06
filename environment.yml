@@ -1,0 +1,21 @@
+name: facedet-cuda
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+
+dependencies:
+  - python=3.10
+  - pytorch=2.5.*
+  - pytorch-cuda=11.8
+  - torchvision
+  - torchaudio
+
+  - opencv=4.10.*
+  - numpy
+  - pandas
+  - matplotlib
+  - pillow
+  - tqdm
+  - scipy
+  - scikit-learn

@@ -1,0 +1,26 @@
+# NOTE: For CUDA support, use the conda environment instead (environment.yml)
+# Install with: conda env create -f environment.yml
+#
+# This requirements.txt is for pip-only installations (NOT recommended for CUDA)
+# If you must use pip, you'll need to install CUDA-enabled packages manually
+
+pandas
+matplotlib
+seaborn
+opencv-python==4.10.0.84  # Pinned version - 4.13.x has broken imread
+numpy
+tqdm
+Pillow
+psutil
+albumentations  # For balanced augmentation in preprocessing
+
+# PyTorch with CUDA (pip version)
+# Uncomment and adjust based on your CUDA version:
+# --extra-index-url https://download.pytorch.org/whl/cu118
+# torch
+# torchvision
+# torchaudio
+
+# OpenCV (standard version - NO CUDA support)
+# For CUDA support, see INSTALL_OPENCV_CUDA.md
+# opencv-contrib-python
