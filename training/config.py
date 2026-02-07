@@ -6,27 +6,43 @@ from pathlib import Path
 
 # Base paths
 BASE_DIR = Path(__file__).parent.parent
-DATASET_DIR = BASE_DIR / "dataset" / "praproses_result" / "final_images"
+
+# Use PRE-SPLIT data from splitting_data folder
+SPLIT_DATA_DIR = BASE_DIR / "dataset" / "split_data"
+TRAIN_DIR = SPLIT_DATA_DIR / "train"
+VAL_DIR = SPLIT_DATA_DIR / "val"
+TEST_DIR = SPLIT_DATA_DIR / "test"
+
+# Results and reports - all saved to result_training
 RESULT_DIR = BASE_DIR / "result_training"
-REPORT_DIR = BASE_DIR / "report_training"
+REPORT_DIR = RESULT_DIR / "reports"
 MODEL_DIR = RESULT_DIR / "models"
+HISTORY_DIR = RESULT_DIR / "history"
+CHECKPOINT_DIR = RESULT_DIR / "checkpoints"
 
 # Create directories if they don't exist
 RESULT_DIR.mkdir(exist_ok=True, parents=True)
 REPORT_DIR.mkdir(exist_ok=True, parents=True)
 MODEL_DIR.mkdir(exist_ok=True, parents=True)
+HISTORY_DIR.mkdir(exist_ok=True, parents=True)
+CHECKPOINT_DIR.mkdir(exist_ok=True, parents=True)
 
 # Image parameters
 IMG_SIZE = (224, 224)
-BATCH_SIZE = 32
-NUM_CLASSES = 10  # Based on final_images folder structure
+BATCH_SIZE = 16  # Reduced for memory efficiency with large models
+NUM_CLASSES = 10
 
-# Training parameters
-TRAIN_SPLIT = 0.8
-VAL_SPLIT = 0.2
+# GPU optimization settings
+USE_MIXED_PRECISION = True  # FP16 for RTX GPUs
+GPU_MEMORY_GROWTH = True
+PREFETCH_BUFFER_SIZE = 'auto'  # tf.data.AUTOTUNE
+
+# Training parameters (no split needed - using pre-split data)
 RANDOM_SEED = 42
 EPOCHS = 50
 EARLY_STOPPING_PATIENCE = 10
+REDUCE_LR_PATIENCE = 5
+REDUCE_LR_FACTOR = 0.5
 
 # SVM parameters
 SVM_KERNEL = 'rbf'

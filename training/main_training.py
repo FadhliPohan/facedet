@@ -307,18 +307,17 @@ def analyze_results():
 
 def main():
     """Main function"""
-    # Set GPU memory growth
-    gpus = tf.config.experimental.list_physical_devices('GPU')
-    if gpus:
-        try:
-            for gpu in gpus:
-                tf.config.experimental.set_memory_growth(gpu, True)
-            print("✅ GPU memory growth enabled\n")
-        except RuntimeError as e:
-            print(f"Warning: {e}\n")
+    # Set up GPU for training - REQUIRED!
+    from utils.gpu_utils import setup_gpu_for_training, print_memory_usage
     
-    # Print banner
     print_banner()
+    
+    # Initialize GPU configuration
+    if not setup_gpu_for_training(verbose=True):
+        print("\n❌ GPU initialization failed!")
+        print("   Training requires NVIDIA GPU with CUDA support.")
+        print("   Please check your GPU drivers and CUDA installation.")
+        return
     
     # Check for existing reports
     check_existing_reports()

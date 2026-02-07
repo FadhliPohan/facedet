@@ -1,57 +1,96 @@
 #!/usr/bin/env python3
 """
-Custom CNN + Softmax Training Script
+Custom CNN + Softmax Training Script - GPU Optimized
+Uses pre-split train/val/test data with memory-efficient tf.data pipeline
 """
 import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 import sys
 import time
+import numpy as np
 from pathlib import Path
 import pickle
 import tensorflow as tf
-from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint, ReduceLROnPlateau
+from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint, ReduceLROnPlateau, CSVLogger
 
+# Add current directory to path
 sys.path.append(str(Path(__file__).parent))
 
-from config import MODEL_DIR, REPORT_DIR, EPOCHS, EARLY_STOPPING_PATIENCE
-from utils.data_loader import load_and_preprocess
+from config import MODEL_DIR, REPORT_DIR, HISTORY_DIR, CHECKPOINT_DIR, SPLIT_DATA_DIR, BATCH_SIZE, EPOCHS, EARLY_STOPPING_PATIENCE, REDUCE_LR_PATIENCE, REDUCE_LR_FACTOR, IMG_SIZE
+from utils.gpu_utils import setup_gpu_for_training, print_memory_usage
+from utils.data_pipeline import create_datasets_for_training
 from utils.model_builder import build_cnn_model
 from utils.metrics_calculator import calculate_metrics, plot_confusion_matrix, plot_training_history
-from utils.report_generator import generate_report, save_report
+from utils.report_generator import generate_report, save_report, get_latest_report, load_report
 
 
 def train_cnn_softmax():
-    """Train Custom CNN + Softmax model"""
+    """Train Custom CNN + Softmax model with GPU optimization"""
     
     print("\n" + "="*80)
-    print("🚀 TRAINING: Custom CNN + Softmax")
-    print("="*80 + "\n")
+    print("🚀 TRAINING: Custom CNN + Softmax (GPU Optimized)")
+    print("="*80)
     
+    # Check if already trained
+    final_model_path = MODEL_DIR / "cnn_softmax_final.h5"
+    
+    if final_model_path.exists():
+        print(f"\n⚠️  Found existing trained model: {final_model_path}")
+        
+        latest_report_path = get_latest_report('CNN_Softmax')
+        if latest_report_path:
+            report = load_report(latest_report_path)
+            print(f"\n   Previous performance:")
+            print(f"   Accuracy: {report['metrics']['accuracy']:.2f}%")
+            print(f"   F1-Score: {report['metrics']['f1_score']:.2f}%")
+        
+        print("\n❓ Do you want to retrain from scratch?")
+        response = input("   This will overwrite existing model (y/n): ").lower()
+        if response != 'y': return
+        
+        print("\n🔄 Retraining model from scratch...")
+    
+    print()
     start_time = time.time()
+    print_memory_usage()
     
-    # 1. Load and preprocess data
-    print("Step 1: Loading and preprocessing data...")
-    X_train, X_val, y_train, y_val, class_names, label_encoder = load_and_preprocess(
-        model_type='cnn',  # standard normalization
-        img_size=(224, 224)
+    # 1. Create datasets - ENABLE AUGMENTATION for training!
+    print("Step 1: Loading pre-split datasets (with augmentation)...")
+    train_ds, val_ds, test_ds, class_names, dataset_info = create_datasets_for_training(
+        split_dir_path=str(SPLIT_DATA_DIR),
+        img_size=IMG_SIZE,
+        batch_size=BATCH_SIZE,
+        preprocessing='standard',  # CNN uses standard normalization
+        augment_train=True
     )
     
     num_classes = len(class_names)
     
     # 2. Build CNN model
     print("\nStep 2: Building CNN model...")
-    model = build_cnn_model(
-        input_shape=(224, 224, 3),
-        num_classes=num_classes
-    )
+    # Use strategy scope for potential multi-GPU support later
+    strategy = tf.distribute.MirroredStrategy() if len(tf.config.list_physical_devices('GPU')) > 1 else tf.distribute.get_strategy()
     
-    # Print model summary
+    with strategy.scope():
+        model = build_cnn_model(
+            input_shape=(IMG_SIZE[0], IMG_SIZE[1], 3),
+            num_classes=num_classes
+        )
+        
+        # Compile model
+        model.compile(
+            optimizer='adam',
+            loss='sparse_categorical_crossentropy',
+            metrics=['accuracy']
+        )
+    
     model.summary()
     
     # 3. Setup callbacks
     print("\nStep 3: Setting up training callbacks...")
-    model_checkpoint_path = MODEL_DIR / "cnn_softmax_best.h5"
+    model_checkpoint_path = CHECKPOINT_DIR / "cnn_softmax_best.keras"  # Use .keras format
+    csv_logger_path = HISTORY_DIR / f"cnn_training_log_{time.strftime('%Y%m%d_%H%M%S')}.csv"
     
     callbacks = [
         EarlyStopping(
@@ -68,24 +107,24 @@ def train_cnn_softmax():
         ),
         ReduceLROnPlateau(
             monitor='val_loss',
-            factor=0.5,
-            patience=5,
-            min_lr=1e-7,
+            factor=REDUCE_LR_FACTOR,
+            patience=REDUCE_LR_PATIENCE,
+            min_lr=1e-6,
             verbose=1
-        )
+        ),
+        CSVLogger(str(csv_logger_path))
     ]
     
     # 4. Train model
     print(f"\nStep 4: Training model...")
     print(f"  Epochs: {EPOCHS}")
-    print(f"  Early stopping patience: {EARLY_STOPPING_PATIENCE}")
-    print(f"  Batch size: 32\n")
+    print(f"  Batch size: {BATCH_SIZE}")
+    print(f"  Steps per epoch: {dataset_info['train_count'] // BATCH_SIZE}")
     
     history = model.fit(
-        X_train, y_train,
-        validation_data=(X_val, y_val),
+        train_ds,
+        validation_data=val_ds,
         epochs=EPOCHS,
-        batch_size=32,
         callbacks=callbacks,
         verbose=1
     )
@@ -93,37 +132,49 @@ def train_cnn_softmax():
     print("\n✅ Training completed\n")
     
     # 5. Save final model
-    final_model_path = MODEL_DIR / "cnn_softmax_final.h5"
     model.save(final_model_path)
     print(f"✅ Final model saved to: {final_model_path}\n")
     
-    # 6. Save label encoder
-    encoder_path = MODEL_DIR / "cnn_label_encoder.pkl"
-    with open(encoder_path, 'wb') as f:
-        pickle.dump(label_encoder, f)
-    print(f"✅ Label encoder saved to: {encoder_path}\n")
+    # 6. Save label info
+    label_info = {'class_names': class_names, 'num_classes': len(class_names)}
+    with open(MODEL_DIR / "cnn_label_info.pkl", 'wb') as f:
+        pickle.dump(label_info, f)
     
     # 7. Plot training history
-    history_plot_path = REPORT_DIR / f"cnn_softmax_training_history_{time.strftime('%Y%m%d_%H%M%S')}.png"
+    history_plot_path = HISTORY_DIR / f"cnn_history_{time.strftime('%Y%m%d_%H%M%S')}.png"
     plot_training_history(history, save_path=history_plot_path)
     
     # 8. Evaluate model
     print("Step 5: Evaluating model...")
-    y_pred_probs = model.predict(X_val, verbose=0)
-    y_pred = y_pred_probs.argmax(axis=1)
+    
+    # Get true labels from validation/test set
+    # Note: iterating a shuffled dataset won't match predictions if not careful
+    # We use val_ds which is NOT augmented and NOT shuffled in our pipeline
+    
+    # Collect all labels and predictions
+    print("   Collecting predictions...")
+    y_true = []
+    y_pred = []
+    
+    for images, labels in val_ds:
+        preds = model.predict(images, verbose=0)
+        y_true.extend(labels.numpy())
+        y_pred.extend(preds.argmax(axis=1))
+    
+    y_true = np.array(y_true)
+    y_pred = np.array(y_pred)
     
     # Calculate metrics
-    metrics = calculate_metrics(y_val, y_pred, class_names=class_names)
+    metrics = calculate_metrics(y_true, y_pred, class_names=class_names)
     
     # 9. Plot confusion matrix
     cm_path = REPORT_DIR / f"cnn_softmax_confusion_matrix_{time.strftime('%Y%m%d_%H%M%S')}.png"
     plot_confusion_matrix(metrics['confusion_matrix'], class_names, save_path=cm_path, figsize=(14, 12))
     
-    # 10. Calculate training time
+    # 10. Generate report
     training_time = time.time() - start_time
-    
-    # 11. Generate and save report
-    print("Step 6: Generating report...")
+    from utils.gpu_utils import get_gpu_info
+    gpu_info = get_gpu_info()
     
     # Get training history metrics
     final_train_acc = history.history['accuracy'][-1] * 100
@@ -131,69 +182,56 @@ def train_cnn_softmax():
     final_train_loss = history.history['loss'][-1]
     final_val_loss = history.history['val_loss'][-1]
     
+    print("Step 6: Generating report...")
     report = generate_report(
         model_name='CNN_Softmax',
         model_type='Custom CNN + Softmax',
         metrics=metrics,
         training_time=training_time,
-        num_samples_train=len(X_train),
-        num_samples_val=len(X_val),
+        num_samples_train=dataset_info['train_count'],
+        num_samples_val=dataset_info['val_count'],
         class_names=class_names,
         hyperparameters={
             'epochs': EPOCHS,
             'actual_epochs': len(history.history['loss']),
-            'batch_size': 32,
+            'batch_size': BATCH_SIZE,
             'optimizer': 'adam',
             'loss': 'sparse_categorical_crossentropy',
             'early_stopping_patience': EARLY_STOPPING_PATIENCE,
-            'input_shape': '(224, 224, 3)',
+            'input_shape': f'{IMG_SIZE + (3,)}',
             'final_train_accuracy': f'{final_train_acc:.2f}%',
             'final_val_accuracy': f'{final_val_acc:.2f}%',
             'final_train_loss': f'{final_train_loss:.4f}',
-            'final_val_loss': f'{final_val_loss:.4f}'
+            'final_val_loss': f'{final_val_loss:.4f}',
+            'mixed_precision': 'FP16 (enabled)',
+            'gpu_name': gpu_info['devices'][0].get('gpu_name', 'Unknown') if gpu_info['available'] else 'N/A'
         },
-        notes='Custom CNN architecture trained from scratch with Softmax classifier'
+        notes='Custom CNN architecture training with tf.data pipeline'
     )
     
-    # Add training history image to report
+    # Add history image
     report['training_history_image'] = str(history_plot_path)
     
     report_path = save_report(report, 'CNN_Softmax', confusion_matrix_path=cm_path)
     
-    # 12. Summary
+    # Summary
     print("\n" + "="*80)
     print("✅ TRAINING COMPLETED SUCCESSFULLY!")
     print("="*80)
     print(f"\n📊 Final Results:")
     print(f"   Validation Accuracy:  {metrics['accuracy']:.2f}%")
-    print(f"   Precision: {metrics['precision']:.2f}%")
-    print(f"   Recall:    {metrics['recall']:.2f}%")
     print(f"   F1-Score:  {metrics['f1_score']:.2f}%")
     print(f"\n📈 Training History:")
     print(f"   Final Train Accuracy: {final_train_acc:.2f}%")
     print(f"   Final Val Accuracy:   {final_val_acc:.2f}%")
-    print(f"   Epochs Trained: {len(history.history['loss'])}/{EPOCHS}")
+    print(f"   Epochs: {len(history.history['loss'])}")
     print(f"\n⏱️  Training Time: {report['model_info']['training_time_formatted']}")
-    print(f"\n💾 Saved Files:")
-    print(f"   Best Model: {model_checkpoint_path}")
-    print(f"   Final Model: {final_model_path}")
-    print(f"   Label Encoder: {encoder_path}")
-    print(f"   Report: {report_path}")
-    print(f"   Confusion Matrix: {cm_path}")
-    print(f"   Training History: {history_plot_path}")
-    print("\n" + "="*80 + "\n")
-    
+    print_memory_usage()
     return report
 
 
 if __name__ == "__main__":
-    # Set GPU memory growth
-    gpus = tf.config.experimental.list_physical_devices('GPU')
-    if gpus:
-        try:
-            for gpu in gpus:
-                tf.config.experimental.set_memory_growth(gpu, True)
-        except RuntimeError as e:
-            print(e)
-    
+    if not setup_gpu_for_training(verbose=True):
+        print("❌ GPU initialization failed. Exiting...")
+        exit(1)
     train_cnn_softmax()

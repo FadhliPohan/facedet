@@ -1,28 +1,27 @@
-# NOTE: For CUDA support, use the conda environment instead (environment.yml)
-# Install with: conda env create -f environment.yml
-#
-# This requirements.txt is for pip-only installations (NOT recommended for CUDA)
-# If you must use pip, you'll need to install CUDA-enabled packages manually
+# Training System Requirements
+# For GPU-optimized training with NVIDIA RTX GPUs
 
+# Core Data Processing
 pandas
 matplotlib
-seaborn
-opencv-python==4.10.0.84  # Pinned version - 4.13.x has broken imread
 numpy
 tqdm
 Pillow
 psutil
-albumentations 
-sklearn
- # For balanced augmentation in preprocessing
 
-# PyTorch with CUDA (pip version)
-# Uncomment and adjust based on your CUDA version:
-# --extra-index-url https://download.pytorch.org/whl/cu118
-# torch
-# torchvision
-# torchaudio
+# Image Processing
+opencv-python==4.10.0.84  # Pinned version - 4.13.x has broken imread
+albumentations  # For data augmentation in preprocessing
 
-# OpenCV (standard version - NO CUDA support)
-# For CUDA support, see INSTALL_OPENCV_CUDA.md
-# opencv-contrib-python
+# Machine Learning - TensorFlow with GPU Support
+tensorflow[and-cuda]>=2.15.0  # Includes CUDA libraries automatically
+scikit-learn  # For SVM classifiers and metrics
+
+# Optional: For visualization
+seaborn
+
+# Notes:
+# - TensorFlow with [and-cuda] includes all CUDA dependencies
+# - Requires NVIDIA GPU with CUDA 11.8+ support
+# - For CPU-only: use 'tensorflow' without [and-cuda]
+# - Installation: pip install -r requirements.txt

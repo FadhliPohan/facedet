@@ -8,6 +8,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import json
+import numpy as np
 
 sys.path.append(str(Path(__file__).parent))
 
@@ -42,6 +43,12 @@ def compare_models(show_per_class=False, save_comparison=True):
     for report_path in report_paths:
         try:
             report = load_report(report_path)
+            
+            # Extract GPU info if available
+            gpu_name = 'N/A'
+            if 'hyperparameters' in report and 'gpu_name' in report['hyperparameters']:
+                gpu_name = report['hyperparameters']['gpu_name']
+            
             models_data.append({
                 'Model': report['model_info']['model_name'],
                 'Type': report['model_info']['model_type'],
@@ -52,6 +59,7 @@ def compare_models(show_per_class=False, save_comparison=True):
                 'Training Time': report['model_info']['training_time_seconds'],
                 'Time Formatted': report['model_info']['training_time_formatted'],
                 'Timestamp': report['model_info']['timestamp'],
+                'GPU': gpu_name,
                 'Report': report
             })
         except Exception as e:
@@ -68,17 +76,29 @@ def compare_models(show_per_class=False, save_comparison=True):
     df = df.sort_values('Accuracy', ascending=False)
     
     # Display comparison table
-    print("="*120)
+    print("="*140)
     print("OVERALL MODEL COMPARISON")
-    print("="*120)
-    print(f"{'Rank':<6} {'Model':<25} {'Accuracy':>10} {'Precision':>10} {'Recall':>10} {'F1-Score':>10} {'Training Time':>15}")
-    print("-"*120)
+    print("="*140)
+    print(f"{'Rank':<6} {'Model':<25} {'Accuracy':>10} {'Precision':>10} {'Recall':>10} {'F1-Score':>10} {'Time':>15} {'GPU':<20}")
+    print("-"*140)
     
     for idx, row in enumerate(df.itertuples(), 1):
-        print(f"{idx:<6} {row.Model:<25} {row.Accuracy:>9.2f}% {row.Precision:>9.2f}% "
-              f"{row.Recall:>9.2f}% {getattr(row, 'F1-Score'):>9.2f}% {row._9:>15}")
+        # Handle cases where F1-Score column might have a dash or be accessed differently
+        f1 = getattr(row, 'F1-Score')
+        # Handle spaced column names by using getattr or _n index if needed, but named tuples usually handle spaces by replacing with _
+        # Actually pandas namedtuples replace spaces with underscore. Let's check.
+        # 'F1-Score' -> '_5' likely or similar. Let's rely on column lookup by name from DataFrame for safety in print loop?
+        # No, iterating tuples is faster. 'F1-Score' becomes '_5' usually if not valid identifier.
+        # But let's use the dictionary lookups to be safe or clean definitions
+        pass
     
-    print("="*120)
+    # Re-iterate cleanly
+    for i in range(len(df)):
+        row = df.iloc[i]
+        print(f"{i+1:<6} {row['Model']:<25} {row['Accuracy']:>9.2f}% {row['Precision']:>9.2f}% "
+              f"{row['Recall']:>9.2f}% {row['F1-Score']:>9.2f}% {row['Time Formatted']:>15} {row['GPU']:<20}")
+    
+    print("="*140)
     
     # Best model
     best_model = df.iloc[0]
@@ -152,7 +172,8 @@ def compare_models(show_per_class=False, save_comparison=True):
                 'recall': row['Recall'],
                 'f1_score': row['F1-Score'],
                 'training_time': row['Time Formatted'],
-                'timestamp': row['Timestamp']
+                'timestamp': row['Timestamp'],
+                'gpu': row['GPU']
             })
         
         comparison_path = REPORT_DIR / f"model_comparison_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.json"
@@ -167,8 +188,6 @@ def compare_models(show_per_class=False, save_comparison=True):
 
 def create_radar_chart(df, save_path):
     """Create radar chart for model comparison"""
-    import numpy as np
-    
     # Prepare data
     categories = ['Accuracy', 'Precision', 'Recall', 'F1-Score']
     num_vars = len(categories)
@@ -191,11 +210,11 @@ def create_radar_chart(df, save_path):
         ax.plot(angles, values, 'o-', linewidth=2, label=row.Model, color=color)
         ax.fill(angles, values, alpha=0.15, color=color)
     
-    # Fix axis to go in the right order
+    # Fix axis
     ax.set_theta_offset(np.pi / 2)
     ax.set_theta_direction(-1)
     
-    # Draw axis lines for each angle and label
+    # Draw axis lines
     ax.set_xticks(angles[:-1])
     ax.set_xticklabels(categories, fontsize=11)
     
