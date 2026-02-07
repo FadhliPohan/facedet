@@ -1,0 +1,11 @@
+Kelas,Jumlah Gambar,Path,Persentase (%)
+5. Melanocytic Nevi (NV) - 7970,7970,dataset/original_dataset/5. Melanocytic Nevi (NV) - 7970,29.35
+4. Basal Cell Carcinoma (BCC) 3323,3323,dataset/original_dataset/4. Basal Cell Carcinoma (BCC) 3323,12.24
+2. Melanoma 15.75k,3140,dataset/original_dataset/2. Melanoma 15.75k,11.56
+10. Warts Molluscum and other Viral Infections - 2103,2103,dataset/original_dataset/10. Warts Molluscum and other Viral Infections - 2103,7.75
+6. Benign Keratosis-like Lesions (BKL) 2624,2079,dataset/original_dataset/6. Benign Keratosis-like Lesions (BKL) 2624,7.66
+7. Psoriasis pictures Lichen Planus and related diseases - 2k,2055,dataset/original_dataset/7. Psoriasis pictures Lichen Planus and related diseases - 2k,7.57
+8. Seborrheic Keratoses and other Benign Tumors - 1.8k,1847,dataset/original_dataset/8. Seborrheic Keratoses and other Benign Tumors - 1.8k,6.8
+9. Tinea Ringworm Candidiasis and other Fungal Infections - 1.7k,1702,dataset/original_dataset/9. Tinea Ringworm Candidiasis and other Fungal Infections - 1.7k,6.27
+1. Eczema 1677,1677,dataset/original_dataset/1. Eczema 1677,6.18
+3. Atopic Dermatitis - 1.25k,1257,dataset/original_dataset/3. Atopic Dermatitis - 1.25k,4.63

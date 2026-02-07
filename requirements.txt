@@ -12,7 +12,9 @@ numpy
 tqdm
 Pillow
 psutil
-albumentations  # For balanced augmentation in preprocessing
+albumentations 
+sklearn
+ # For balanced augmentation in preprocessing
 
 # PyTorch with CUDA (pip version)
 # Uncomment and adjust based on your CUDA version:

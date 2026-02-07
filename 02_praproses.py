@@ -326,15 +326,17 @@ def balance_dataset_via_augmentation(input_dir, output_dir, strategy='balanced',
         current_count = len(image_files)
         total_original += current_count
         
-        # Copy semua gambar original
-        for img_path in image_files:
-            shutil.copy2(img_path, output_class_dir / img_path.name)
-        
-        # Hitung berapa banyak augmentasi yang diperlukan
+        # Hitung berapa banyak augmentasi/undersampling yang diperlukan
         needed = target - current_count
         
+        # Copy gambar original HANYA jika needed >= 0 (butuh augmentasi atau sudah pas)
+        # Jika needed < 0, kita akan undersample langsung tanpa copy dulu
+        if needed >= 0:
+            for img_path in image_files:
+                shutil.copy2(img_path, output_class_dir / img_path.name)
+        
         if needed > 0:
-            print(f"\n   {class_name}: Need {needed:,} more images")
+            print(f"\n   {class_name}: Need {needed:,} more images (augmentation)")
             
             # Generate augmented images
             aug_count = 0
@@ -354,6 +356,10 @@ def balance_dataset_via_augmentation(input_dir, output_dir, strategy='balanced',
                     augmented_image = augmented['image']
                     augmented_bgr = cv2.cvtColor(augmented_image, cv2.COLOR_RGB2BGR)
                     
+                    # CRITICAL: Resize kembali ke target size setelah augmentasi
+                    # karena beberapa transformasi (seperti RandomScale) bisa mengubah ukuran
+                    augmented_bgr = cv2.resize(augmented_bgr, Config.TARGET_SIZE, interpolation=cv2.INTER_AREA)
+                    
                     # Save augmented image
                     aug_filename = f"{source_img_path.stem}_aug_{aug_count:04d}{source_img_path.suffix}"
                     aug_path = output_class_dir / aug_filename
@@ -367,8 +373,21 @@ def balance_dataset_via_augmentation(input_dir, output_dir, strategy='balanced',
                     continue
         
         elif needed < 0:
-            # Jika lebih dari target, kita tetap simpan semua (tidak undersample di sini)
-            print(f"\n   {class_name}: Already has {current_count:,} images (exceeds target by {-needed:,})")
+            # Jika lebih dari target, lakukan random undersampling
+            print(f"\n   {class_name}: Has {current_count:,} images, need to remove {-needed:,} (undersampling)")
+            
+            # Random sampling untuk memilih gambar yang akan disimpan
+            np.random.seed(42)  # For reproducibility
+            sampled_indices = np.random.choice(len(image_files), size=target, replace=False)
+            sampled_files = [image_files[i] for i in sampled_indices]
+            
+            # Copy hanya file yang terpilih
+            for img_path in sampled_files:
+                shutil.copy2(img_path, output_class_dir / img_path.name)
+        
+        else:
+            # Sudah pas dengan target
+            print(f"\n   {class_name}: Already has {current_count:,} images (exact match with target)")
     
     # Hitung final distribution
     final_counts = {}
